@@ -20,22 +20,22 @@ emb_dim = 512  # dimension of word embeddings
 attention_dim = 512  # dimension of attention linear layers
 decoder_dim = 512  # dimension of decoder RNN
 dropout = 0.5
-os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")  # sets device for model and PyTorch tensors
+#os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")  # sets device for model and PyTorch tensors
 cudnn.benchmark = True  # set to true only if inputs to model are fixed size; otherwise lot of computational overhead
 
 # Training parameters
 start_epoch = 0
-epochs = 120  # number of epochs to train for (if early stopping is not triggered)
+epochs = 21  # number of epochs to train for (if early stopping is not triggered)
 epochs_since_improvement = 0  # keeps track of number of epochs since there's been an improvement in validation BLEU
-batch_size = 32
+batch_size = 80
 workers = 1  # for data-loading; right now, only 1 works with h5py
 encoder_lr = 1e-4  # learning rate for encoder if fine-tuning
 decoder_lr = 4e-4  # learning rate for decoder
 grad_clip = 5.  # clip gradients at an absolute value of
 alpha_c = 1.  # regularization parameter for 'doubly stochastic attention', as in the paper
 best_bleu4 = 0.  # BLEU-4 score right now
-print_freq = 100  # print training/validation stats every __ batches
+print_freq = batch_size  # print training/validation stats every __ batches
 fine_tune_encoder = False  # fine-tune encoder?
 checkpoint = None  # path to checkpoint, None if none
 
@@ -59,6 +59,7 @@ def main():
                                        decoder_dim=decoder_dim,
                                        vocab_size=len(word_map),
                                        dropout=dropout)
+        print('DECODER', decoder)
         decoder_optimizer = torch.optim.Adam(params=filter(lambda p: p.requires_grad, decoder.parameters()),
                                              lr=decoder_lr)
         encoder = Encoder()
@@ -169,20 +170,33 @@ def train(train_loader, encoder, decoder, criterion, encoder_optimizer, decoder_
         caps = caps.to(device)
         caplens = caplens.to(device)
 
+        #print('IMGS', imgs, imgs.shape)
+        #print('CAPS', caps, caps.shape)
+        #print('CAPLENS', caplens, caplens.shape)
+
         # Forward prop.
         imgs = encoder(imgs)
         scores, caps_sorted, decode_lengths, alphas, sort_ind = decoder(imgs, caps, caplens)
+
+        #print('SCORES', scores, scores.shape)
+        #print('CAPS SORTED', caps_sorted, caps_sorted.shape)
+        #print('DECODE LENGTHS', decode_lengths, len(decode_lengths))
+        #print('ALPHAS', alphas, alphas.shape)
+        #print('SORT IND', sort_ind, sort_ind.shape)
 
         # Since we decoded starting with <start>, the targets are all words after <start>, up to <end>
         targets = caps_sorted[:, 1:]
 
         # Remove timesteps that we didn't decode at, or are pads
         # pack_padded_sequence is an easy trick to do this
-        scores, _ = pack_padded_sequence(scores, decode_lengths, batch_first=True)
-        targets, _ = pack_padded_sequence(targets, decode_lengths, batch_first=True)
+        scores = pack_padded_sequence(scores, decode_lengths, batch_first=True)
+        targets = pack_padded_sequence(targets, decode_lengths, batch_first=True)
+
+        #print('SCORES', scores, scores.data.shape)
+        #print('TARGETS', targets, targets.data.shape)
 
         # Calculate loss
-        loss = criterion(scores, targets)
+        loss = criterion(scores.data, targets.data)
 
         # Add doubly stochastic attention regularization
         loss += alpha_c * ((1. - alphas.sum(dim=1)) ** 2).mean()
@@ -205,7 +219,7 @@ def train(train_loader, encoder, decoder, criterion, encoder_optimizer, decoder_
             encoder_optimizer.step()
 
         # Keep track of metrics
-        top5 = accuracy(scores, targets, 5)
+        top5 = accuracy(scores.data, targets.data, 5)
         losses.update(loss.item(), sum(decode_lengths))
         top5accs.update(top5, sum(decode_lengths))
         batch_time.update(time.time() - start)
@@ -269,18 +283,18 @@ def validate(val_loader, encoder, decoder, criterion):
             # Remove timesteps that we didn't decode at, or are pads
             # pack_padded_sequence is an easy trick to do this
             scores_copy = scores.clone()
-            scores, _ = pack_padded_sequence(scores, decode_lengths, batch_first=True)
-            targets, _ = pack_padded_sequence(targets, decode_lengths, batch_first=True)
+            scores = pack_padded_sequence(scores, decode_lengths, batch_first=True)
+            targets = pack_padded_sequence(targets, decode_lengths, batch_first=True)
 
             # Calculate loss
-            loss = criterion(scores, targets)
+            loss = criterion(scores.data, targets.data)
 
             # Add doubly stochastic attention regularization
             loss += alpha_c * ((1. - alphas.sum(dim=1)) ** 2).mean()
 
             # Keep track of metrics
             losses.update(loss.item(), sum(decode_lengths))
-            top5 = accuracy(scores, targets, 5)
+            top5 = accuracy(scores.data, targets.data, 5)
             top5accs.update(top5, sum(decode_lengths))
             batch_time.update(time.time() - start)
 

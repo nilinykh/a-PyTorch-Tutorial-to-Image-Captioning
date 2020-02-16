@@ -2,8 +2,7 @@ import torch
 from torch import nn
 import torchvision
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
 
 class Encoder(nn.Module):
     """
@@ -198,8 +197,11 @@ class DecoderWithAttention(nn.Module):
         # At each time-step, decode by
         # attention-weighing the encoder's output based on the decoder's previous hidden state output
         # then generate a new word in the decoder with the previous word and the attention weighted encoding
+        #print('MAX DECODE LENGTHS', max(decode_lengths))
         for t in range(max(decode_lengths)):
+            #print('T', t)
             batch_size_t = sum([l > t for l in decode_lengths])
+            #print('BATCH SIZE T', batch_size_t)
             attention_weighted_encoding, alpha = self.attention(encoder_out[:batch_size_t],
                                                                 h[:batch_size_t])
             gate = self.sigmoid(self.f_beta(h[:batch_size_t]))  # gating scalar, (batch_size_t, encoder_dim)

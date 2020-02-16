@@ -9,11 +9,11 @@ import torch.nn.functional as F
 from tqdm import tqdm
 
 # Parameters
-data_folder = '/media/ssd/caption data'  # folder with data files saved by create_input_files.py
+data_folder = '/home/xilini/a-PyTorch-Tutorial-to-Image-Captioning/data'  # folder with data files saved by create_input_files.py
 data_name = 'coco_5_cap_per_img_5_min_word_freq'  # base name shared by data files
-checkpoint = '../BEST_checkpoint_coco_5_cap_per_img_5_min_word_freq.pth.tar'  # model checkpoint
-word_map_file = '/media/ssd/caption data/WORDMAP_coco_5_cap_per_img_5_min_word_freq.json'  # word map, ensure it's the same the data was encoded with and the model was trained with
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")  # sets device for model and PyTorch tensors
+checkpoint = 'BEST_checkpoint_coco_5_cap_per_img_5_min_word_freq.pth.tar'  # model checkpoint
+word_map_file = '/home/xilini/a-PyTorch-Tutorial-to-Image-Captioning/data/WORDMAP_coco_5_cap_per_img_5_min_word_freq.json'  # word map, ensure it's the same the data was encoded with and the model was trained with
+device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")  # sets device for model and PyTorch tensors
 cudnn.benchmark = True  # set to true only if inputs to model are fixed size; otherwise lot of computational overhead
 
 # Load model
@@ -156,6 +156,8 @@ def evaluate(beam_size):
         i = complete_seqs_scores.index(max(complete_seqs_scores))
         seq = complete_seqs[i]
 
+        #print([rev_word_map[k] for k in seq])
+
         # References
         img_caps = allcaps[0].tolist()
         img_captions = list(
@@ -166,7 +168,13 @@ def evaluate(beam_size):
         # Hypotheses
         hypotheses.append([w for w in seq if w not in {word_map['<start>'], word_map['<end>'], word_map['<pad>']}])
 
+        print(references)
+        print(hypotheses)
+        print()
+
         assert len(references) == len(hypotheses)
+
+        break
 
     # Calculate BLEU-4 scores
     bleu4 = corpus_bleu(references, hypotheses)
